@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+{% block title %}Invoice List{% endblock %}
+
+{% block body %}
+<div class="flex justify-end mb-4">
+    <a href="/invoice-create" class="bg-blue-400 hover:bg-blue-600 text-black hover:text-white text-lg px-4 py-2 rounded-2xl">Add</a>
+</div>
+
+<table class="border-collapse table-fixed border border-gray-400 w-full">
+    <thead>
+        <tr>
+            <th class="border border-gray-500 bg-gray-300 px-4 py-2">Invoice Number</th>
+            <th class="border border-gray-500 bg-gray-300 px-4 py-2">Customer</th>
+            <th class="border border-gray-500 bg-gray-300 px-4 py-2">Total Amount</th>
+            <th class="border border-gray-500 bg-gray-300 px-4 py-2">Invoice Date</th>
+            <th class="border border-gray-500 bg-gray-300 px-4 py-2">Item Name</th>
+            <th class="border border-gray-500 bg-gray-300 px-4 py-2">Quantity</th>
+            <th class="border border-gray-500 bg-gray-300 px-4 py-2">Item Price</th>
+            <th class="border border-gray-500 bg-gray-300 px-4 py-2">Update</th>
+            <th class="border border-gray-500 bg-gray-300 px-4 py-2">Delete</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for invoice in invoices %}
+        <tr>
+            <td class="border px-4 py-2">{{ invoice.invoice_number }}</td>
+            <td class="border px-4 py-2">{{ invoice.customer }}</td>
+            <td class="border px-4 py-2">{{ invoice.total_amount }}</td>
+            <td class="border px-4 py-2">{{ invoice.invoice_date }}</td>
+            <td class="border px-4 py-2">{{ invoice.name }}</td>
+            <td class="border px-4 py-2">{{ invoice.qty }}</td>
+            <td class="border px-4 py-2">{{ invoice.price }}</td>
+            <td class="border px-4 py-2">
+                <a class="text-blue-700" href="{{ url_for('update_invoice', invoice_number=invoice.invoice_number) }}">Update</a>
+            </td>
+            <td class="border px-4 py-2">
+                <a class="text-red-700" href="{{ url_for('delete_invoice', invoice_number=invoice.invoice_number) }}">Delete</a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

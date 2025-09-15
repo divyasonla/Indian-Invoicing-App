@@ -1,0 +1,34 @@
+{% extends "layout.html" %}
+
+{% block title %}Invoice-Update{% endblock %}
+
+{% block body %}
+<div class="flex items-center justify-center min-h-screen bg-amber-100">
+    <div class="bg-white shadow-lg rounded-2xl p-8 w-full max-w-md">
+    <form action="/invoice", method="POST">
+        <div class="text-left">
+         <label class="block text-gray-700 font-medium mb-1">Customer</label>
+
+         <input 
+          class="w-full border-2 border-gray-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+         type="text" name="customer" value="{{ invoice.customer }}" required>
+        </div>
+        <div class="text-left">
+         <label class="block text-gray-700 font-medium mb-1">Total Amount</label>
+
+         <input 
+          class="w-full border-2 border-gray-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+         type="text" name="tota_amount" value="{{ invoice.tota_amount }}" required>
+        </div>
+        <!-- <input type="text" name="invoice_number" value="{{ invoice.invoice_number }}"><br> -->
+        <!-- <input type="text" name="customer" value="{{ invoice.customer }}"><br> -->
+        <!-- <input type="text" ><br> -->
+        <button 
+            class="w-full bg-blue-500 text-white font-semibold py-2 rounded-lg shadow-md hover:bg-blue-600 transition"
+            type="submit">
+            submit
+        </button>
+    </form>
+    </div>
+</div>
+{% endblock %}
