@@ -6,54 +6,56 @@
   <form action="/invoice" method="post" id="invoiceForm">
     <div class="mb-3">
       <label>Invoice Number</label>
-      <input type="text" name="invoice_number" value="INV-00" required class="w-full p-2 border" />
+      <input type="text" name="invoice_number" value="INV-00" required class="w-full p-2 border border-gray-300" />
     </div>
 
     <div class="mb-3">
       <label>Customer</label>
-      <input type="text" name="customer" required class="w-full p-2 border" />
+      <input type="text" id="customer" class="w-full p-2 border border-gray-300" autocomplete="off" required/>
+      <input type="hidden" name="customer" id="customer_id" /> <!-- ✅ stores ID -->
+      <div id="suggestions" class="border border-gray-300 bg-white absolute z-10"></div>
     </div>
+
 
     <div class="mb-3">
       <label>Total Amount</label>
-      <input type="text" id="totalAmount" name="tota_amount" readonly class="w-full p-2 border bg-gray-50" />
+      <input type="text" id="totalAmount" name="total_amount" readonly class="w-full p-2 border border-gray-300 bg-gray-50" required/>
     </div>
 
     <div class="mb-3">
       <label>Invoice Date</label>
-      <input type="date" name="invoice_date" class="w-full p-2 border bg-gray-50" />
+      <input type="date" name="invoice_date" class="w-full p-2 border border-gray-300 bg-gray-50" required/>
     </div>
-
-    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded">Submit</button>
 
     <table id="invoiceTable" class="w-full mt-4 border-collapse">
       <thead>
         <tr>
-          <th class="border px-2">Item Name</th>
-          <th class="border px-2">Unit Price</th>
-          <th class="border px-2">Quantity</th>
-          <th class="border px-2">Amount</th>
-          <th class="border px-2">Actions</th>
+          <th class="border border-gray-300 px-2">Item Name</th>
+          <th class="border border-gray-300 px-2">Unit Price</th>
+          <th class="border border-gray-300 px-2">Quantity</th>
+          <th class="border border-gray-300 px-2">Amount</th>
+          <th class="border border-gray-300 px-2">Actions</th>
         </tr>
       </thead>
       <tbody id="invoiceTbody"></tbody>
     </table>
 
     <button id="addItemBtn" type="button" class="mt-3 px-3 py-2 bg-green-600 text-white rounded">Add Item</button>
+
+    <div class="mt-4">
+      <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded">Submit</button>
+    </div>
   </form>
 
-  <!-- overlay + dialog -->
+  <!-- Overlay -->
   <div id="overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:40;"></div>
 
+  <!-- Add Item Dialog -->
   <div id="itemDialog" style="display:none; position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); background:#fff; padding:18px; border-radius:8px; z-index:50; width:320px; box-shadow:0 8px 24px rgba(0,0,0,0.2);">
     <h3 class="mb-2">Add Item</h3>
 
     <label>Item Name</label>
-    <select id="itemSelect" class="w-full p-1 border mb-2">
-      {% for item in items %}
-      <option value="{{ item.item_name }}" data-price="{{ item.unit_price }}">{{ item.item_name }}</option>
-      {% endfor %}
-    </select>
+    <input id="itemNameInput" type="text" class="w-full p-1 border mb-2" />
 
     <label>Quantity</label>
     <input id="itemQty" type="number" min="1" value="1" class="w-full p-1 border mb-2" />
@@ -68,6 +70,9 @@
   </div>
 </div>
 
+<!-- External autocomplete script -->
+<script src="{{ url_for('static', filename='autocomp.js') }}"></script>
+
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   const addItemBtn = document.getElementById('addItemBtn');
@@ -76,7 +81,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const closeDialogBtn = document.getElementById('closeDialogBtn');
   const saveItemBtn = document.getElementById('saveItemBtn');
 
-  const itemSelect = document.getElementById('itemSelect');
+  const itemNameInput = document.getElementById('itemNameInput');
   const itemQtyInput = document.getElementById('itemQty');
   const itemPriceInput = document.getElementById('itemPrice');
 
@@ -88,12 +93,14 @@ document.addEventListener('DOMContentLoaded', function () {
   function openDialog() {
     overlay.style.display = 'block';
     itemDialog.style.display = 'block';
-    itemSelect.focus();
+    itemNameInput.focus();
   }
   function closeDialog() {
     overlay.style.display = 'none';
     itemDialog.style.display = 'none';
     itemQtyInput.value = 1;
+    itemNameInput.value = '';
+    itemPriceInput.value = '';
   }
 
   function recalcAndSave() {
@@ -106,20 +113,20 @@ document.addEventListener('DOMContentLoaded', function () {
     items.forEach((it, idx) => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td class="border px-2">
-          ${escapeHtml(it.name)}
-          <input type="hidden" name="item_name[]" value="${escapeHtml(it.name)}" />
+        <td class="border border-gray-300 px-2">
+          ${it.name}
+          <input type="hidden" name="item_name[]" value="${it.name}" />
         </td>
-        <td class="border px-2 text-right">
+        <td class="border border-gray-300 px-2 text-right">
           ${it.price.toFixed(2)}
           <input type="hidden" name="price[]" value="${it.price}" />
         </td>
-        <td class="border px-2 text-center">
+        <td class="border border-gray-300 px-2 text-center">
           ${it.qty}
           <input type="hidden" name="qty[]" value="${it.qty}" />
         </td>
-        <td class="border px-2 text-right">${(it.qty * it.price).toFixed(2)}</td>
-        <td class="border px-2 text-center">
+        <td class="border border-gray-300 px-2 text-right">${(it.qty * it.price).toFixed(2)}</td>
+        <td class="border border-gray-300 px-2 text-center">
           <button type="button" data-idx="${idx}" class="delete-row px-2 py-1 bg-red-500 text-white rounded">Delete</button>
         </td>
       `;
@@ -128,13 +135,12 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function saveItem() {
-    const selectedOption = itemSelect.options[itemSelect.selectedIndex];
-    const name = selectedOption.value;
+    const name = itemNameInput.value.trim();
     const price = parseFloat(itemPriceInput.value) || 0;
     const qty = parseInt(itemQtyInput.value, 10) || 0;
 
     if (!name || qty <= 0 || price <= 0) {
-      alert('Please enter valid quantity and price.');
+      alert('Please enter valid item, quantity and price.');
       return;
     }
 
@@ -155,28 +161,10 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  function escapeHtml(str) {
-    return String(str)
-      .replaceAll('&','&amp;')
-      .replaceAll('<','&lt;')
-      .replaceAll('>','&gt;')
-      .replaceAll('"','&quot;')
-      .replaceAll("'",'&#39;');
-  }
-
   addItemBtn.addEventListener('click', openDialog);
   closeDialogBtn.addEventListener('click', closeDialog);
   saveItemBtn.addEventListener('click', saveItem);
   overlay.addEventListener('click', closeDialog);
-
-  itemSelect.addEventListener("change", function () {
-    let selectedOption = this.options[this.selectedIndex];
-    itemPriceInput.value = selectedOption.getAttribute("data-price");
-  });
-
-  if (itemSelect.options.length > 0) {
-    itemPriceInput.value = itemSelect.options[0].getAttribute("data-price");
-  }
 });
 </script>
 {% endblock %}

@@ -16,21 +16,22 @@ class Customer(BaseModel):
 
 class Invoice(BaseModel):
     invoice_number = CharField(unique=True)
-    customer = ForeignKeyField(Customer)
+    customer = ForeignKeyField(Customer, backref="invoices")
     invoice_date = DateField()
-    item_name = CharField()
-    qty = IntegerField()
-    price = FloatField()
     total_amount = FloatField()
-
-    
+    arn_number = CharField(null=True) 
 
 class Item(BaseModel):
     id = AutoField()
-    item_name = CharField(200)
+    invoice = ForeignKeyField(Invoice, backref="items")
+    item_name = CharField(max_length=200)
     quantity = IntegerField()
     unit_price = FloatField()
-    # amount = FloatField()
+
+    @property
+    def amount(self):
+        return self.quantity * self.unit_price
+    
 
 class Users(BaseModel):
     id = AutoField()
@@ -47,7 +48,7 @@ db.connect()
 Customer.create_table()
 Invoice.create_table()
 Item.create_table()
-# Users.create_table()
+Users.create_table()
 # Item.drop_table()
 # Users.drop_table()
 # Invoice.drop_table()
