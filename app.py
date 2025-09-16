@@ -1,16 +1,23 @@
-from flask import Flask, request,jsonify,make_response
+from flask import Flask, request,jsonify,make_response, render_template, redirect, url_for, session, flash
 from peewee import *
 from modules import * 
-from datetime import datetime 
 from weasyprint import HTML
+import time
+import requests
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 db = SqliteDatabase('invoice.db')
+app.secret_key = "your_secret_key_here"
 
-@app.route('/customer/<int:id>', methods=['GET', 'POST', 'PUT', 'DELETE'])
-def customer(id):
+@app.route('/customer-create')
+def customer_create():
+    return render_template('customer.html')
+
+@app.route('/customer', methods=['GET', 'POST', 'PUT', 'DELETE'])
+def customer():
     if request.method == 'POST':
-        data = request.get_json()
+        data = request.form
         username = data.get("username")
         email = data.get("email")
         address = data.get("address")
@@ -25,203 +32,143 @@ def customer(id):
             email=email,
             address=address
         )
-        return jsonify({
-            "customer":{
-                "customer_id":customer.id,
-                "customer name":customer.username,
-                "customer email":customer.email,
-                "customer address":customer.address
-            }
-        })
-    elif request.method == 'PUT':
-        try:
-            data = request.get_json()
-            customer = Customer.get_by_id(id)
-            customer.username = data.get("username")
-            customer.email = data.get("email")
-            customer.address = data.get("address")
-            return jsonify({
-            "customer":{
-                "customer_id":customer.id,
-                "customer name":customer.username,
-                "customer email":customer.email,
-                "customer address":customer.address
-            }
-            })
-        except DoesNotExist:
-            return jsonify({
-                "message": "Customer not found"
-            })
-    elif request.method == "DELETE":
-        try:
-            customer = Customer.get_by_id()
-            customer.delete_instance()
-            return jsonify({
-                "message":f"Customer {id} delete Successfully"
-            })
-        except Customer.DoesNotExist:
-            return "Customer Not found"   
+        customers = Customer.select()
+        return render_template('customer-list.html', customers=customers)
     else:
-        customer = Customer.select()
-        for data in customer:
-            [{
-                "customer id":data.id ,
-                "customer name":data.username,
-                "customer email":data.email,
-                "customer address":data.address
-            }]
+        customers = Customer.select()
+        return render_template('customer-list.html',customers=customers)
+  
+@app.route("/customer/<int:id>/update", methods=['POST', 'GET'])
+def update_customer(id):
+    customer = Customer.get_by_id(id)
 
-@app.route("/invoice/<string:invoice_number>", methods=['POST','PUT','DELETE','GET'])
-def invoice(invoice_number):
     if request.method == "POST":
-        data = request.get_json()
+        customer.username = request.form.get("username")
+        customer.email = request.form.get("email")
+        customer.address = request.form.get("address")
+        customer.save()  
+        return redirect(url_for('customer'))  
+
+    return render_template("customer-update.html", customer=customer)
+
+@app.route("/customer/<int:id>/delete", methods=['GET','POST', "DELETE"])
+def delete_customer(id):
+    
+    customer = Customer.get_by_id(id)
+    if not customer:
+        return "<script>alert('Customer Not Found')</script>"
+    # else:
+    customer.delete_instance()
+    return "<script>alert('Customer Delete Successfully')</script>"
+
+@app.route("/invoice-create")
+def invoice_create():
+    items = Item.select()
+    return render_template('invoice.html', items=items)
+
+@app.route('/autocomplete', methods=['GET'])
+def autocomplete():
+    search_input = request.args.get('customer','').lower()
+    suggestions = [
+        {"id": customer.id, "name": customer.username}
+        for customer in Customer.select()
+        if search_input in customer.username.lower()
+    ]
+    return jsonify(matching_results=suggestions)
+
+@app.route("/invoice", methods=['POST', 'GET'])
+def invoice():
+    if request.method == "POST":
+        data = request.form
         invoice_number = data.get("invoice_number")
-        customer_id = data.get("customer")
-        customer = Customer.get_by_id(customer_id)
-        total_amount = 0
-        created_at = datetime.now()
-        
-        if  invoice_number is None or not invoice_number :
-            return "please provide invoice_number"
+        customer_id = data.get("customer")  
+        invoice_date = data.get("invoice_date")
+        total_amount = data.get("total_amount")
+
+        item_names = data.getlist("item_name[]")
+        qtys = data.getlist("qty[]")
+        prices = data.getlist("price[]")
+
+        if not customer_id:
+            return render_template("invoice-create.html", alert="Please enter customer")
+        if not invoice_number:
+            return render_template("invoice-create.html", alert="Please provide invoice number")
+        if not item_names:
+            return render_template("invoice-create.html", alert="No items added")
+
+
+        customer = Customer.get_by_id(int(customer_id))
+
 
         invoice = Invoice.create(
             invoice_number=invoice_number,
             customer=customer,
             total_amount=total_amount,
-            created_at=created_at
+            invoice_date=invoice_date
         )
-        return jsonify({
-            "Invoice": {
-                "Invoice_number": invoice.invoice_number,
-                "customer": invoice.customer.id,
-                "total_amount": invoice.total_amount,
-                "created_at": str(invoice.created_at)
-            }
-        })
 
-    elif request.method == "PUT":
-        try:
-            data = request.get_json()
-            invoice = Invoice.get_or_none(Invoice.invoice_number == invoice_number)
-            if not invoice:
-                return jsonify({"message": "Invoice not Found"}), 404
+        for name, qty, price in zip(item_names, qtys, prices):
+            Item.create(
+                invoice=invoice,
+                item_name=name,
+                quantity=int(qty),
+                unit_price=float(price)
+            )
 
-            customer_id = data.get("customer")
-            invoice.customer = Customer.get_by_id(customer_id)
-            invoice.total_amount = 0
-            invoice.created_at = datetime.now()
-            invoice.save()
+        invoices = Invoice.select()
+        return render_template("invoice-list.html", invoices=invoices)
 
-            return jsonify({
-                "Invoice": {
-                   "Invoice_number": invoice.invoice_number,
-                   "customer": invoice.customer.id,
-                   "total_amount": invoice.total_amount,
-                   "created_at": str(invoice.created_at)
-                }
-            })
-        except:
-            return jsonify({"message": "Error updating invoice"}), 500
-
-    elif request.method == "DELETE":
-        invoice = Invoice.get_or_none(Invoice.invoice_number == invoice_number)
-        if not invoice:
-            return jsonify({"message": "Invoice not Found"}), 404
-        invoice.delete_instance()
-        return jsonify({"message": "Invoice deleted successfully"})
-
-    else:  # GET
-        invoice = Invoice.get_or_none(Invoice.invoice_number == invoice_number)
-        if not invoice:
-            return jsonify({"message": "Invoice not Found"}), 404
-
-        return jsonify({
-            "Invoice_number": invoice.invoice_number,
-            "Customer": invoice.customer.id,
-            "total_amount": invoice.total_amount,
-            "created at": str(invoice.created_at)
-        })
-    
-@app.route('/item/<int:id>', methods=['POST', 'GET', 'PUT', 'DELETE'])
-def item(id):
-    if request.method == 'POST':
-        data = request.get_json()
-        item_name = data.get("item_name")
-        invoice_id = data.get("invoice")
-        invoice = Invoice.get_or_none(Invoice.invoice_number == invoice_id)
-        unit_price = data.get("unit_price")
-        quantity = data.get("quantity")
-        amount = float(unit_price) * int(quantity)
-        
-        if not item_name :
-            return "please enter item_name"
-        if not unit_price:
-            return "please enter price"
-        if not quantity:
-            return "please enter quantity"
-        
-        item = Item.create(
-            item_name=item_name,
-            invoice =invoice,
-            unit_price=unit_price,
-            quantity=quantity,
-            amount=amount
-        )
-        
-        return jsonify({
-            "item_name": item.item_name,
-            "invoice":invoice.invoice_number,
-            "unit_price":item.unit_price,
-            "quantity":item.quantity,
-            "amount":item.amount
-        })
-    elif request.method == 'PUT':
-        try :
-            data = request.get_json()
-            item = Item.get_by_id(id)
-            item.item_name = data.get("item_name")
-            invoice_id = data.get("invoice")
-            item.invoice = Invoice.get_or_none(Invoice.invoice_number == invoice_id)
-            item.unit_price = data.get("unit_price")
-            item.quantity = data.get("quantity")
-
-            item.amount = float(item.unit_price) * int(item.quantity)
-            return jsonify({
-                "id":item.id,
-                "item_name": item.item_name,
-                "invoice" :item.invoice.invoice_number,
-                "unit_price":item.unit_price,
-                "quantity":item.quantity,
-                "amount":item.amount
-            })
-        except DoesNotExist:
-            return jsonify({
-                "message":"Item DoesNotExist"
-            })
-
-    elif request.method == "DELETE":
-        item = Item.get_by_id(id)
-        if not item:
-            return jsonify({
-                "error":"item not exist"
-            })
-        item.delete_instance()
-        return jsonify({"message":"Item Delete Succussfully"})
     else:
-        items = Item.select()
-        return jsonify([
-            {
-                "item_name": item.item_name,
-                "invoice": item.invoice.invoice_number,  
-                "unit_price": item.unit_price,
-                "quantity": item.quantity,
-                "amount": item.amount
-            }
-            for item in items
-        ])
+        invoices = Invoice.select()
+        return render_template("invoice-list.html", invoices=invoices)
+
+
+@app.route("/invoice/<string:invoice_number>/update", methods=['POST','GET'])
+def update_invoice(invoice_number):
+    invoice = Invoice.get_or_none(Invoice.invoice_number == invoice_number)
+    if not invoice:
+        return render_template("invoice-list.html", alert="Invoice not found!")
+
+    if request.method == "POST": 
+        customer_id = request.form.get("customer")
+        if customer_id:
+            invoice.customer = Customer.get_by_id(customer_id)
+
+        invoice.total_amount = request.form.get("total_amount")
+        invoice.invoice_date = request.form.get("invoice_date")
+        invoice.save()
+
+        # Update items
+        item_ids = request.form.getlist("item_id[]")   # hidden inputs for existing items
+        item_names = request.form.getlist("item_name[]")
+        qtys = request.form.getlist("qty[]")
+        prices = request.form.getlist("price[]")
+
+        for item_id, name, qty, price in zip(item_ids, item_names, qtys, prices):
+            item = Item.get_or_none(Item.id == item_id)
+            if item:
+                item.item_name = name
+                item.quantity = int(qty)
+                item.unit_price = float(price)
+                item.save()
+
+        return redirect(url_for('invoice'))
+
+    items = Item.select().where(Item.invoice == invoice)
+    return render_template('invoice-update.html', invoice=invoice, items=items)
+
+@app.route("/invoice/<string:invoice_number>/delete",methods=['GET','POST', 'DELETE'])
+def delete_invoice(invoice_number):
+    invoice = Invoice.get_or_none(Invoice.invoice_number == invoice_number)
+    if not invoice:
+        return "invoice_number not found!"
+    invoice.delete_instance()
+    invoices = Invoice.select()
+    return render_template('invoice-list.html', invoices=invoices)
 
 
 #weasyprint 
+
 @app.route("/invoices/<string:invoice_number>/pdf", methods=["GET"])
 def invoice_pdf(invoice_number):
     try:
@@ -237,7 +184,7 @@ def invoice_pdf(invoice_number):
         <tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Amount</th></tr>
         """
         for item in items:
-            html += f"<tr><td>{item.item_name}</td><td>{item.quantity}</td><td>{item.unit_price}</td><td>{item.amount}</td></tr>"
+            html += f"<tr><td>{item.item_name}</td><td>{item.quantity}</td><td>{item.unit_price}</td></tr>"
         html += f"</table><p>Total: ₹{invoice.total_amount}</p>"
 
         pdf = HTML(string=html).write_pdf()
@@ -247,12 +194,142 @@ def invoice_pdf(invoice_number):
     except Invoice.DoesNotExist:
         return jsonify({"error": "Invoice not found"}), 404
 
+
+@app.route('/register', methods=['POST', 'GET'])
+def register():
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+        confirmed = request.form.get("confirmed")
+
+        if not username:
+            flash("Must enter a username!", "error")
+            return redirect(url_for("register"))
+
+        if password != confirmed:
+            flash("Passwords do not match!", "error")
+            return redirect(url_for("register"))
+
+        hashed_password = generate_password_hash(password)
+        
+        Users.create(username=username, password=hashed_password)
+
+        flash("Registration successful! Please login.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("register.html")
+
+
+@app.route('/login', methods=['POST', 'GET'])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+
+        try:
+            user = Users.get(Users.username == username)
+            if check_password_hash(user.password, password):
+                session["user_id"] = user.id
+                session["username"] = user.username
+                flash(f"Welcome, {user.username}!", "success")
+                return redirect(url_for("home"))
+            else:
+                flash("Incorrect password!", "error")
+                return redirect(url_for("login"))
+        except Users.DoesNotExist:
+            flash("User does not exist!", "error")
+            return redirect(url_for("login"))
+
+    return render_template("login.html")
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash("Logged out successfully.", "success")
+    return redirect(url_for("login"))
+
+api_url = "https://buildwithhussain.com/api/v2/method/get_arn_number"
+
+headers = {
+    "Authorization": "token 2c70587e2df4779:56331804ac8ca7b",
+    "Content-Type": "application/json"
+}
+
+
+
+
+def send_post_method(api_url, headers, data_payload):
+    response = requests.post(api_url, headers=headers, json=data_payload)
+    if response.status_code == 200:
+        response.raise_for_status()
+        print("Response:", response.json())
+        return response.json()
+    
+    else:
+        print(f"Request failed with status code: {response.status_code}")
+        print(response.text)
+        return None
+
+
+def retry_logic(api_url, headers, data_payload, maxRetries=3, interval=1):
+    for attempt in range(1, maxRetries+1):
+        try:
+            response = requests.post(api_url, headers, json=data_payload)
+            response.raise_for_status()
+            return response.json()
+        except:
+            print(f"Attempt{attempt}/{maxRetries}")
+            if attempt < maxRetries:
+                times = interval * (2 ** (attempt-1))
+                print(f'Retrying in {times}')
+                time.sleep(times)
+    raise Exception(f"POST request failed after {maxRetries} attempts.")
+
+@app.route('/api/arn_generation/<string:invoice_number>')
+def arn_generation(invoice_number):
+
+
+    try:
+        invoice = Invoice.get(Invoice.invoice_number == invoice_number)
+        customer = invoice.customer
+    except Invoice.DoesNotExist:
+        return jsonify({"error":"Invoice not found"}),404
+   
+    data_payload = {
+        "user_name": customer.username,
+        "invoice_number":invoice.invoice_number
+    }
+    
+    
+    response_data = send_post_method(api_url, headers, data_payload)
+    if not response_data:
+        try:
+            response_data = retry_logic(api_url, headers, data_payload)
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
+
+
+    arn_number = response_data.get("arn_number")
+    if arn_number:
+        invoice.arn_number = arn_number
+        invoice.save()
+    else:
+        return jsonify({"error": "arn_number not found in API response"}), 400
+
+    return jsonify({
+        "message": "ARN saved successfully",
+        "arn_number": arn_number
+    }), 200
+
+
 @app.route('/')
 def home():
-    return "hello"
-
-
+    if "user_id" not in session:
+        flash("Please login first!", "error")
+        return redirect(url_for("login"))
+    
+    return render_template("home.html", username=session["username"])
 
 if __name__ == "__main__":
-    # print("Creating Model  ")
     app.run(debug=True)
